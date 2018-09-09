@@ -4,7 +4,7 @@ import pandas as pd
 class ModelWrapper():
     '''
     provides some convenience functions for analyzing models.
-    Using this class to wrapa a model creates a wrapped-model
+    Using this class to wrap a model creates a wrapped-model
     that basically behaves like the original model, but  
     addition also implements some other useful functions.
 
@@ -107,7 +107,7 @@ class ModelWrapper():
             dfs_to_concat.append(tmp_df)
         # concatenate it and use the model to predict 
         df_big = pd.concat(dfs_to_concat)
-        df_big['yhat'] = self.model.predict(df_big)
+        df_big['yhat'] = self.model.predict(df_big[self.model.feature_name()])
         # now, groupby the x-column and the x-point and generate mean/quantiles
         df_summarized = df_big.groupby(['x_col', 'x_point'])['yhat'].describe()
         # now plot this

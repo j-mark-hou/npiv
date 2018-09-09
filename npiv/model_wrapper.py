@@ -38,7 +38,7 @@ class ModelWrapper():
         the self.a object, and get the attr of that.  
         if a does not have attr either, this will throw an error.
         '''
-        return(getattr(self.model, attr))
+        return getattr(self.model, attr)
 
 
     def marginal_effects(self, df, x_col, eps=.1):
@@ -46,10 +46,10 @@ class ModelWrapper():
         for each observation in df, computes the slope of the model
         with respect to x_col by perturbing x_col a bit
         inputs:
-            - df is a pandas.DataFrame object, has all the columns returned
+            - df : a pandas.DataFrame object, has all the columns returned
               by self.model.feature_name()
-            - x_col is in self.model.feature_name() 
-            - eps = how much to perturb the column by
+            - x_col : in self.model.feature_name() 
+            - eps : how much to perturb the column by
         output:
             - an np.array-like object of length to the number of rows in df
         '''
@@ -66,4 +66,61 @@ class ModelWrapper():
         y_lower = model.predict(df_lower[feat_names])
         # compute the change in y relative to the change in x
         y_diff_scaled = (y_higher-y_lower)/(2*eps)
-        return(y_diff_scaled)
+        return y_diff_scaled
+
+    def partial_dependencies(self, df, x_cols=None, num_grid_points=100, sample_n=1000, plot=True):
+        '''
+        plots the 25% percentiles, mean, and 75% percentile 
+        of the output of self.model as each of the columns in x_cols 
+        independently varies.  df is used as an empirical distribution 
+        over which to average the data.
+        Inputs:
+            - df : some dataframe with columns containing all of self.model.feature_name()
+            - x_cols : some subset of dataframe.columns to produce partial dependency plots for.
+              leave as None to do so for all features of self.model.
+            - num_grid_points : for each x-column, how many points to compute the model at.
+              too large => slow, too small => resulting partial dependency plot too coarse.
+            - sample_n : how many observations to randomly sample from df when computing
+              statistics.  too large => slow, too small => stats inaccurate.
+            - plot : set to True to plot, False to return the dataframe used to generate the plot.
+        Outputs:
+            - a dataframe containing all the relevant plotted information
+        '''
+        x_cols = x_cols if x_cols else self.model.feature_name()
+        assert(not set(x_cols).difference(self.model.feature_name())), "x_cols contains columns not recognized by the model"
+        assert(not set(self.model.feature_name()).difference(df.columns)), "model requires columns not found in df"
+        if df.shape[0]>sample_n:
+            df = df.sample(sample_n)
+        num_obs = df.shape[0]
+        # for each x_column, 
+        dfs_to_concat = []
+        for c in x_cols:
+            # generate num_grid_points points between the min and max values of that x column
+            xmin, xmax = df[c].min(), df[c].max()
+            xpoints = np.linspace(xmin, xmax, num_grid_points)
+            # for each of the x-points, set the corresponding value of df[c] to that, and stack the dataframes together
+            tmp_df = pd.concat([df]*num_grid_points)
+            tmp_df[c] = np.repeat(xpoints, num_obs) # the first num_obs values will all be xpoints[0], next num_obs xpoints[1], etc.
+            # remember which x_col we're moving here, and add this to the list to be concatenated
+            tmp_df['x_col'] = c
+            tmp_df['x_point'] = tmp_df[c]
+            dfs_to_concat.append(tmp_df)
+        # concatenate it and use the model to predict 
+        df_big = pd.concat(dfs_to_concat)
+        df_big['yhat'] = self.model.predict(df_big)
+        # now, groupby the x-column and the x-point and generate mean/quantiles
+        df_summarized = df_big.groupby(['x_col', 'x_point'])['yhat'].describe()
+        # now plot this
+        if plot:
+            for c in x_cols:
+                tmp_df = df_summarized.loc[(c),:].reset_index().rename(columns={'x_point':c})
+                tmp_df.plot(c, ['75%', 'mean', '25%'], grid=True, figsize=(8,1), 
+                            style=['--', '-', '--'], color='black', legend=False)
+        else:
+            return df_summarized
+
+
+
+
+
+

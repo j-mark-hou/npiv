@@ -1,7 +1,33 @@
 import pytest
+import pandas as pd
+import numpy as np
+
+
+def pytest_addoption(parser):
+    parser.addoption("--num_obs", action="store", default=10,
+        help="how many rows in the test dataframe")
+    parser.addoption("--num_feats", action="store", default=5,
+        help="how many features in the test model")
 
 @pytest.fixture
-def minimal_model_object():
+def num_obs(request):
+    '''
+    define how many rows of data the input stipulates
+    '''
+    return int(request.config.getoption("--num_obs"))
+
+@pytest.fixture
+def feat_names(request):
+    '''
+    define the feature names given input on how many features to construct
+    '''
+    num_feats = int(request.config.getoption("--num_feats"))
+    feat_names = ['x{}'.format(i) for i in range(num_feats)]
+    print(feat_names)
+    return(feat_names)
+
+@pytest.fixture
+def minimal_model_object(feat_names):
     '''
     create a minimal model object for testing various model-related things,
         e.g. the ModelWrapper class
@@ -9,7 +35,16 @@ def minimal_model_object():
     # construct a 'TestModelClass' class on the fly and instantiate it
     model = type('TestModelClass', (), {})()
     # give it a function that returns its feature names
-    model.feature_name = lambda : ['x1', 'x2', 'x3']
+    model.feature_name = lambda : feat_names
     # give it a predict function = sum all the columns of the dataframe
     model.predict = lambda df: df.sum(axis=1)
     return(model)
+
+
+@pytest.fixture
+def minimal_data(num_obs, feat_names):
+    '''
+    creates a minimal dataframe for applying models to
+    '''
+    df = pd.DataFrame(np.ones(shape=(num_obs,len(feat_names))), columns = feat_names)
+    return(df)

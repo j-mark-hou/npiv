@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 class ModelWrapper():
     '''
@@ -112,10 +113,21 @@ class ModelWrapper():
         df_summarized = df_big.groupby(['x_col', 'x_point'])['yhat'].describe()
         # now plot this
         if plot:
-            for c in x_cols:
+            fig, axes = plt.subplots(nrows=len(x_cols), ncols=1, figsize=(8, len(x_cols)*1.5))
+            for (i,c) in enumerate(x_cols):
+                ax = axes[i]
                 tmp_df = df_summarized.loc[(c),:].reset_index().rename(columns={'x_point':c})
-                tmp_df.plot(c, ['75%', 'mean', '25%'], grid=True, figsize=(8,1), 
-                            style=['--', '-', '--'], color='black', legend=False)
+                # plot the mean
+                ax.plot(tmp_df['mean'], color='black', linestyle='-')
+                ax.plot(tmp_df['25%'], color='black', linestyle='--')
+                ax.plot(tmp_df['75%'], color='black', linestyle='--')
+                # set the x label so we know what feature is being varied
+                ax.set_xlabel(c)
+                # activate gridlines
+                ax.grid()
+            plt.suptitle('mean and 25th/75th percentiles of model predictions vs various features')
+            plt.tight_layout()
+            plt.subplots_adjust(top=0.9) # so the suptitle looks ok
         else:
             return df_summarized
 

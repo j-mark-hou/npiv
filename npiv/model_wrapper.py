@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 class ModelWrapper():
     '''
@@ -23,12 +22,13 @@ class ModelWrapper():
     def __init__(self, model):
         '''
         model must some object with:
+          - feature_name() method that returns a list of the
+            features used by the model
           - predict(df) method that takes a pandas.DataFrame 
             object where the rows are the observations and the 
-            columns are the features, and returns some numpy.array
-            object of length equal to the number of rows in df
-          - feature_name() method that returns a list of its features
-            relevant 
+            columns are model.feature_name() in exactly that 
+            order, and returns some numpy.array object of length 
+            equal to the number of rows in df
         '''
         self.model = model
 
@@ -46,12 +46,12 @@ class ModelWrapper():
         '''
         for each observation in df, computes the slope of the model
         with respect to x_col by perturbing x_col a bit
-        inputs:
+        Inputs:
             - df : a pandas.DataFrame object, has all the columns returned
               by self.model.feature_name()
             - x_col : in self.model.feature_name() 
             - eps : how much to perturb the column by
-        output:
+        Returns:
             - an np.array-like object of length to the number of rows in df
         '''
         # predict outcome when we increase the column a bit
@@ -84,8 +84,8 @@ class ModelWrapper():
             - sample_n : how many observations to randomly sample from df when computing
               statistics.  too large => slow, too small => stats inaccurate.
             - plot : set to True to plot, False to return the dataframe used to generate the plot.
-        Outputs:
-            - a dataframe containing all the relevant plotted information
+        Returns:
+            - either a dataframe containing all the relevant plotted information, or nothing
         '''
         x_cols = x_cols if x_cols else self.model.feature_name()
         assert(not set(x_cols).difference(self.model.feature_name())), "x_cols contains columns not recognized by the model"
@@ -113,14 +113,15 @@ class ModelWrapper():
         df_summarized = df_big.groupby(['x_col', 'x_point'])['yhat'].describe()
         # now plot this
         if plot:
+            import matplotlib.pyplot as plt
             fig, axes = plt.subplots(nrows=len(x_cols), ncols=1, figsize=(8, len(x_cols)*1.5))
             for (i,c) in enumerate(x_cols):
                 ax = axes[i]
                 tmp_df = df_summarized.loc[(c),:].reset_index().rename(columns={'x_point':c})
                 # plot the mean
-                ax.plot(tmp_df['mean'], color='black', linestyle='-')
-                ax.plot(tmp_df['25%'], color='black', linestyle='--')
-                ax.plot(tmp_df['75%'], color='black', linestyle='--')
+                ax.plot(tmp_df[c], tmp_df['mean'], color='black', linestyle='-')
+                ax.plot(tmp_df[c], tmp_df['25%'], color='black', linestyle='--')
+                ax.plot(tmp_df[c], tmp_df['75%'], color='black', linestyle='--')
                 # set the x label so we know what feature is being varied
                 ax.set_xlabel(c)
                 # activate gridlines

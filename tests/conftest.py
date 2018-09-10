@@ -27,7 +27,17 @@ def feat_names(request):
     return feat_names
 
 @pytest.fixture
-def minimal_model_object(feat_names):
+def feat_coefs(feat_names):
+    '''
+    define the coefficients on each feature = 0, 1, ..., d-1 
+    where d is the number of features
+    '''
+    feat_coefs = np.arange(len(feat_names))
+    print(feat_coefs)
+    return feat_coefs
+
+@pytest.fixture
+def minimal_model_object(feat_names, feat_coefs):
     '''
     create a minimal model object for testing various model-related things,
         e.g. the ModelWrapper class
@@ -36,8 +46,10 @@ def minimal_model_object(feat_names):
     model = type('TestModelClass', (), {})()
     # give it a function that returns its feature names
     model.feature_name = lambda : feat_names
+    # give it coefs
+    model.feat_coefs = feat_coefs
     # give it a predict function = sum all the columns of the dataframe
-    model.predict = lambda df: df.sum(axis=1)
+    model.predict = lambda df: df.multiply(feat_coefs).sum(axis=1)
     return model
 
 

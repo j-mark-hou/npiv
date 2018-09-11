@@ -62,3 +62,22 @@ def grouped_sse_loss(yhat, y, grps):
     df_grp = df.groupby('grp')[['yhat', 'y']].sum()
     loss =np.sum(np.square(df_grp['yhat']-df_grp['y']))
     return loss
+
+def grouped_sse_loss_linear(coefs, df, x_cols, y_col, grp_col):
+    '''
+    computes yhat via  linear model, then computes the grouped sse
+    via grouped_sse_loss above.
+    Inputs:
+        - coefs : a real-valued array of coefficients, where
+                    coefs[0] is the interceptt and coefs[1], coefs[2], ...
+                    correspond to x_cols[0], x_cols[1],...
+        - df : a dataframe with all the required data
+        - x_cols : columns of df corresponding to the entries in coef, in 
+                    exactly that order
+        - y_col : the true y-values
+        - grp_col : the column with grouping information
+    '''
+    _coefs = coefs[1:]
+    yhat = df[x_cols].multiply(_coefs).sum(axis=1) + coefs[0]
+    loss = grouped_sse_loss(yhat, df[y_col], df[grp_col])
+    return loss

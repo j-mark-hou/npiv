@@ -81,3 +81,24 @@ def grouped_sse_loss_linear(coefs, df, x_cols, y_col, grp_col):
     yhat = df[x_cols].multiply(_coefs).sum(axis=1) + coefs[0]
     loss = grouped_sse_loss(yhat, df[y_col], df[grp_col])
     return loss
+
+
+def grouped_sse_loss_grad_hess(yhat, y, grps):
+    '''
+    produces first and second derivatives of the grouped_sse_loss
+    with respect to each of the entries in yhat.
+    Inputs: grouped_sse_loss
+    Output:
+        - two vectors, each of the same length as the inputs
+          the first one being the first derivatives of the loss
+          with respect to each value of yhat, and the second
+          being the corresponding second derivatives.  the expressions
+          can be trivially computed.
+    '''
+    df = pd.DataFrame({'yhat':yhat, 'y':y, 'grp':grps})
+    df_grp = df.groupby('grp')[['yhat', 'y']].sum()
+    df_grp['yhat_minus_y'] = df_grp['yhat']-df_grp['y']
+    df = df.join(df_grp['yhat_minus_y'], on='grp', how='left')
+    grad = 2*df['yhat_minus_y'].values
+    hess = np.repeat(2, len(yhat))
+    return grad, hess

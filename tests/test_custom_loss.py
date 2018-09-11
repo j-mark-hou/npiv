@@ -28,7 +28,6 @@ def test_grouped_sse_loss_linear(minimal_data_random, minimal_model_object):
     using the straight up SSE loss with a manually computed yhat
     '''
     num_grps = 3
-
     df = pd.concat([minimal_data_random]*num_grps)
     df['groups'] = np.repeat(np.arange(num_grps), minimal_data_random.shape[0])
     df['y'] = np.arange(df.shape[0])
@@ -45,3 +44,43 @@ def test_grouped_sse_loss_linear(minimal_data_random, minimal_model_object):
     assert(np.abs(loss1-loss2)<.00001), \
         "losses computed via grouped_sse_loss() and grouped_sse_loss_linear() differ:" \
         +" {} vs {}".format(loss1, loss2)
+
+def test_grouped_sse_loss_grad_hess(num_obs):
+    num_grps = 3
+    num_obs_per_grp = num_obs
+    # y = np.arange(num_grps*num_obs_per_grp)
+    # yhat = np.repeat(0, num_grps*num_obs_per_grp)
+    y = np.random.normal(size=num_grps*num_obs_per_grp)
+    yhat = np.random.normal(size=num_grps*num_obs_per_grp)
+    groups = np.repeat(np.arange(num_grps), num_obs_per_grp)
+    # compute analytical gradients and hessians
+    grad, hess = co.grouped_sse_loss_grad_hess(yhat, y, groups)
+    # now compute gradient manually
+    grad_manual = np.zeros(len(yhat))
+    yhat_tmp = yhat.copy()
+    eps=.0001
+    for i in range(len(yhat)):
+        yhat_tmp[i] += eps
+        loss_plus = co.grouped_sse_loss(yhat_tmp, y, groups)
+        yhat_tmp[i] -= eps*2
+        loss_minus = co.grouped_sse_loss(yhat_tmp, y, groups)
+        yhat_tmp[i] += eps
+        grad_manual[i] = (loss_plus-loss_minus)/(2*eps)
+    #compare them
+    assert(np.max(np.abs(grad_manual-grad))<.0001), \
+        "analytical and numerical gradients differ"
+    print("\n",pd.DataFrame({'grad_analytical':grad, 'grad_numerical':grad_manual}))
+    # now compute the hessians manually by using the analytical gradients
+    hess_manual = np.zeros(len(yhat))
+    for i in range(len(yhat)):
+        yhat_tmp[i] += eps
+        grad_plus, _ = co.grouped_sse_loss_grad_hess(yhat_tmp, y, groups)
+        yhat_tmp[i] -= eps*2
+        grad_minus, _ = co.grouped_sse_loss_grad_hess(yhat_tmp, y, groups)
+        yhat_tmp[i] += eps
+        hess_manual[i] = (grad_plus[i]-grad_minus[i])/(2*eps)
+    assert(np.max(np.abs(grad_manual-grad))<.0001), \
+        "analytical and numerical hessians differ"
+    print("\n",pd.DataFrame({'hess_analytical':hess, 'hess_numerical':hess_manual}))
+
+

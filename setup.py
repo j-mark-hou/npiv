@@ -12,6 +12,7 @@ setup(
     'statsmodels',
     'scikit-learn',
     'pytest',
-    'lightgbm'
+    'lightgbm',
+    'seaborn'
     ]
     )

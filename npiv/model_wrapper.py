@@ -41,35 +41,48 @@ class ModelWrapper():
         '''
         return getattr(self.model, attr)
 
-
-    def marginal_effects(self, df, x_col, eps=.1):
+    def marginal_effect_plots(self, df, x_cols=None, eps=.1, predict_kwargs=None, plot=True):
         '''
-        for each observation in df, computes the slope of the model
+        for each observation in df, approximates the slope of the model
         with respect to x_col by perturbing x_col a bit
         Inputs:
             - df : a pandas.DataFrame object, has all the columns returned
               by self.model.feature_name()
-            - x_col : in self.model.feature_name() 
+            - x_cols : list of columns in self.model.feature_name() 
             - eps : how much to perturb the column by
+            - predict_kwargs : optional keyword arguments to pass into the self.model.predict() function
+            - plot : set to False to just return the data rather than plotting
         Returns:
-            - an np.array-like object of length to the number of rows in df
+            - either a dataframe containing all of the computed marginal effects, or nothing
         '''
+        predict_kwargs = {} if not predict_kwargs else predict_kwargs
+        feat_names = self.model.feature_name()
+        x_cols = x_cols if x_cols else feat_names
+        assert(not set(x_cols).difference(feat_names)), "x_cols contains columns not recognized by the model"
+        assert(not set(feat_names).difference(df.columns)), "model requires columns not found in df"
+        dfs_to_concat = []
+        for x_col in x_cols:
         # predict outcome when we increase the column a bit
-        model = self.model
-        feat_names = model.feature_name()
-        assert(x_col in feat_names), "{} is not a feature of this model".format(x_col)
-        df_higher = df.copy()
-        df_higher[x_col] += eps
-        y_higher = model.predict(df_higher[feat_names])
-        # and also when we decrease a bit
-        df_lower = df.copy()
-        df_lower[x_col] -= eps
-        y_lower = model.predict(df_lower[feat_names])
-        # compute the change in y relative to the change in x
-        y_diff_scaled = (y_higher-y_lower)/(2*eps)
-        return y_diff_scaled
+            df_higher = df.copy()
+            df_higher[x_col] += eps
+            y_higher = self.model.predict(df_higher[feat_names], **predict_kwargs)
+            # and also when we decrease a bit
+            df_lower = df.copy()
+            df_lower[x_col] -= eps
+            y_lower = self.model.predict(df_lower[feat_names], **predict_kwargs)
+            # compute the change in y relative to the change in x
+            mfx = (y_higher-y_lower)/(2*eps)
+            # store the marginal effects as well as the column we perturbed
+            tmp_df = pd.DataFrame({'marginal effect':mfx, "feature name":x_col})
+            dfs_to_concat.append(tmp_df)
+        plot_df = pd.concat(dfs_to_concat)
+        if plot:
+            import seaborn as sns
+            sns.boxplot(x='feature name', y='marginal effect', data=plot_df)
+        else:
+            return plot_df
 
-    def partial_dependencies(self, df, x_cols=None, num_grid_points=100, sample_n=1000, plot=True):
+    def partial_dependency_plots(self, df, x_cols=None, num_grid_points=100, sample_n=1000, plot=True):
         '''
         plots the 25% percentiles, mean, and 75% percentile 
         of the output of self.model as each of the columns in x_cols 

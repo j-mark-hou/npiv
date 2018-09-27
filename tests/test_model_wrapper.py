@@ -21,20 +21,28 @@ def test_model_wrapper_predict(minimal_model_object, minimal_data_ones):
     assert(max_diff<.00001), \
         "model_wrapper.predict appears to be giving incorrect results \n{}".format(df)
 
-def test_model_wrapper_marginal_effects(minimal_model_object, minimal_data_random):
+def test_model_wrapper_marginal_effect_plots(minimal_model_object, minimal_data_random):
     '''
     tests that the computed marignal effects of a model are as we would expect
     '''
     wrapped_model = ModelWrapper(minimal_model_object)
     df = minimal_data_random
-    for i in range(len(wrapped_model.feature_name())):
-        feat_name = wrapped_model.feature_name()[i]
-        feat_coef = wrapped_model.feat_coefs[i]
-        marginal_effects = wrapped_model.marginal_effects(df, feat_name)
-        min_marg, max_marg = marginal_effects.min(), marginal_effects.max()
-        assert((abs(feat_coef-min_marg)<.000001) and (abs(feat_coef-max_marg)<.000001)), \
-            "min and max marginal effects of {} are ({},{}), not close to true value of {}"\
-            .format(feat_name, min_marg, max_marg, feat_coef)
+    mfx = wrapped_model.marginal_effect_plots(df, plot=False)
+    # compute the min and max marginal effects returned by this function
+    coef_df = mfx.groupby('feature name')['marginal effect'].agg(['min', 'max'])
+    # and merge in the true parameters
+    true_coefs_df = pd.DataFrame({'feature name':wrapped_model.feature_name(), 
+                                    'truth':wrapped_model.feat_coefs}).set_index("feature name")
+    coef_df = true_coefs_df.join(coef_df, how='left')
+    # print the dataframe
+    print(coef_df)
+    # shouldn't be any nulls
+    assert(coef_df.notnull().all().all())
+    # make sure the min and max of the computed marginal effects don't differ too much from truth
+    assert((coef_df['min']-coef_df['truth']).abs().max()<.00001)
+    assert((coef_df['max']-coef_df['truth']).abs().max()<.00001)
+
+
 
 def test_model_wrapper_partial_dependency_doesnt_crash(minimal_model_object, minimal_data_random):
     '''
@@ -44,4 +52,4 @@ def test_model_wrapper_partial_dependency_doesnt_crash(minimal_model_object, min
     '''
     wrapped_model = ModelWrapper(minimal_model_object)
     df = minimal_data_random
-    pdp_df = wrapped_model.partial_dependencies(df, plot=False)
+    pdp_df = wrapped_model.partial_dependency_plots(df, plot=False)

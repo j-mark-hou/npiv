@@ -6,7 +6,7 @@ class IVSimulator:
     class for generating instrumental variables simulation data
     '''
     
-    def __init__(self, num_exog_x_cols, elast_max=-1.2, elast_min=-6.8):
+    def __init__(self, num_exog_x_cols, elast_max=-1.2, elast_min=-6.8, numpy_random_seed=123):
         self.num_exog_x_cols = num_exog_x_cols
         self.instrument_col = 'instrument'
         self.exog_x_cols = ['x_{}'.format(i) for i in range(num_exog_x_cols)]
@@ -16,6 +16,7 @@ class IVSimulator:
         self.elast_min = elast_min
         self._init_log_cost_coefs()
         self._init_log_sales_coefs()
+        np.random.seed(numpy_random_seed)
     
     def _init_log_cost_coefs(self):
         '''

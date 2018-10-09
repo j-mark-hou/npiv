@@ -8,6 +8,7 @@ class NonparametricIV:
     class encapsulating the entire nonparametric instrumental variables process
     '''
     def __init__(self, df:pd.DataFrame, exog_x_cols:list, instrument_cols:list, endog_x_col:str, y_col:str, 
+                    id_col:str,
                     stage1_data_frac:float=.5, stage1_train_frac:float=.7, stage2_train_frac:float=.7,
                     stage1_params:dict=None, stage1_models:dict=None,
                     stage2_model_type:str='lgb', stage2_params:dict=None):
@@ -15,6 +16,7 @@ class NonparametricIV:
         df : the dataframe with training data.  each row should correspond to a single observation.
         exog_x_cols, endog_x_col, y_col : exogenous features, endogenous feature (singular), and target variable,
                                           must be columns in df
+        id_col : column with a unique identifier for each row.
         stage1_data_frac: how much of the data to use to train stage1 vs stage2 (they're trained on separate sets)
         stage1_train_frac: how much of the stage1-data to use for training vs early stopping
         stage1_params : a dict of form {quantile : dictionary_of_parameters_for_corresponding_quantile_model}
@@ -33,7 +35,7 @@ class NonparametricIV:
         # init stage2 parameters
         self._init_stage2(stage2_model_type, stage2_params)
         # create the dataframe required
-        self._init_data(df, exog_x_cols, instrument_cols, endog_x_col, y_col, 
+        self._init_data(df, exog_x_cols, instrument_cols, endog_x_col, y_col, id_col,
                         stage1_data_frac, stage1_train_frac, stage2_train_frac)
 
 
@@ -108,7 +110,14 @@ class NonparametricIV:
                 raise ValueError("stage2 model already trained, set force=True to force retraining")
         except AttributeError:
             pass
-
+        df_stage2 = self.data.loc[self.data['_purpose_'].isin('train2', 'val2'),:]
+        # predict quantiles given trained stage1 model
+        df_qtl_wide = self.predict_stage1(df_stage2, prefix='qtl')
+        # we'll be duplicating entries a bunch, so we'll need an ID to keep track of each
+        df_qtl_wide['_id_'] = np.arange(df_qtl_wide.shape[0])
+        # no make this dataframe long
+        for alpha in self.stage1_qtls:
+            qtl_
 
 
         # lgb datasets for training.  predict endogenous x as a function of exogenous x
@@ -146,6 +155,8 @@ class NonparametricIV:
             self.stage1_models = stage1_models
             # while disabling training
             self._train_stage1_enabled = False
+            # and store the list of quantiles that we're using in stage1
+            self.stage1_qtls = self.stage1_models.keys()
         else:
             if stage1_params is not None:
                 for alpha, params in stage1_params.items():
@@ -174,6 +185,8 @@ class NonparametricIV:
                                                 'bagging_freq': 5,
                                                 }
                                         for alpha in qtls}
+            # and store the list of quantiles that we're using in stage1
+            self.stage1_qtls = self.stage1_params.keys()
 
     def _init_stage2(self, stage2_model_type:str, stage2_params:dict):
         '''
@@ -206,12 +219,17 @@ class NonparametricIV:
             self.stage2_params = None # no params needed if linear objective
 
     def _init_data(self, df:pd.DataFrame, exog_x_cols:list, instrument_cols:list, endog_x_col:str, y_col:str, 
+                    id_col:str,
                     stage1_data_frac:float, stage1_train_frac:float, stage2_train_frac:float):
         '''
         initialization required to create the training data
         '''
+        # make sure the dataframe is actually unique on id_col
+        if len(df[id_col].unique()) != df.shape[0]:
+            raise ValueError("df must be unique on id_col")
+        self.id_col = id_col
         # set the various columns
-        keep_cols = exog_x_cols + instrument_cols + [endog_x_col, y_col]
+        keep_cols = exog_x_cols + instrument_cols + [endog_x_col, y_col, id_col]
         if set(keep_cols).difference(df.columns):
             raise ValueError("exog_x_cols, endog_x_col, y_col must all be columns of df")
         self.exog_x_cols = exog_x_cols
@@ -243,18 +261,25 @@ class NonparametricIV:
         # save the data
         self.data = df
 
-    def _generate_quantiles_and_longify_data(self, df:pd.DataFrame):
-        '''
-        given a dataframe, use it to generate a bunch of quantiles using self.stage1_models,
-        and then stack these vertically for use in stage2
-        '''
-        dfs_to_concat = []
-        x_cols = self.exog_x_cols + self.instrument_cols
-        y_col = self.endog_x_col
-        df = df.copy()
-        for alpha, model in self.stage1_models.items():
-            tmp_df = df_base[model.feature_name()].copy()
-            tmp_df[y_col] = model.predict(tmp_df[model.feature_name])
-        #TODO: complete this
 
-
+    def _generate_stage2_data(self, force=False, print_fnc=print):
+        '''
+        predicts quantiles using stage1 models, stack them in order to produce a dataframe
+        that can be used to actually estimate the second stage of NPIV
+        '''
+        id_col = self.id_col
+        try:
+            self.stage2_data
+            if not force:
+                raise ValueError("stage2 data is already generated")
+        except AttributeError:
+            pass
+        df_stage2 = self.data.loc[self.data['_purpose_'].isin('train2', 'val2'),:]
+        # predict quantiles given trained stage1 model
+        df_qtl_wide = self.predict_stage1(df_stage2, prefix='qtl')
+        # keep the id, as we'll need to group observations
+        df_qtl_wide[id_col] = df_stage2[id_col]
+        df_qtl_wide['_purpose_'] = df_stage2['_purpose_']
+        # no make this dataframe long
+        for alpha in self.stage1_qtls:
+            qtl_

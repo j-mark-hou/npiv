@@ -77,7 +77,7 @@ class NonparametricIV:
         # save the trained models
         self.stage1_models = models
 
-    def predict_stage1(self, df:pd.DataFrame, prefix="qtl_"):
+    def predict_stage1(self, df:pd.DataFrame, prefix="qtl"):
         '''
         predict quantiles of a dataframe given the models in self.stage1_models
         df : a dataframe with the required columns for the models in 
@@ -89,9 +89,10 @@ class NonparametricIV:
             raise AttributeError("stage1 models need to be trained or otherwise defined before "\
                                 +"predict_stage1 can be called")
         qtl_df = df[[]].copy()
-        for alpha, model in self.stage1_models:
+        for alpha, model in self.stage1_models.items():
             col_name = "{}_{:.3f}".format(prefix, alpha)
             qtl_df[col_name] = model.predict(df[model.feature_name()])
+        return qtl_df
 
 
     def train_stage2(self, force=False, print_fnc=print):
@@ -135,7 +136,7 @@ class NonparametricIV:
 
 
     ### helper methods
-    def _init_stage1(self, stage1_models:dict, stage1_params:dict):
+    def _init_stage1(self, stage1_params:dict, stage1_models:dict):
         '''
         initialization for the stage1 models/params
         '''
@@ -147,7 +148,7 @@ class NonparametricIV:
             self._train_stage1_enabled = False
         else:
             if stage1_params is not None:
-                for alpha, params in stage1_params:
+                for alpha, params in stage1_params.items():
                     # copy the input params
                     tmp_params = params.copy()
                     # but override the objective, alpha and metric

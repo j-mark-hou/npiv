@@ -33,7 +33,8 @@ class NonparametricIV:
         # init stage2 parameters
         self._init_stage2(stage2_model_type, stage2_params)
         # create the dataframe required
-        self._init_data(df, exog_x_cols, instrument_cols, endog_x_col, y_col, stage1_data_frac, stage1_train_frac, stage2_train_frac)
+        self._init_data(df, exog_x_cols, instrument_cols, endog_x_col, y_col, 
+                        stage1_data_frac, stage1_train_frac, stage2_train_frac)
 
 
     def train_stage1(self, force=False, print_fnc=print):
@@ -43,7 +44,8 @@ class NonparametricIV:
         print_fnc : some function for printing/logging.
         '''
         if not self._train_stage1_enabled:
-            raise ValueError("training stage1 is not enabled, as stage1 models were directly input during initialization")
+            raise ValueError("training stage1 is not enabled, as stage1 models "\
+                            +"were directly input during initialization")
         try:
             self.stage1_models
             if not force:
@@ -88,6 +90,8 @@ class NonparametricIV:
                 raise ValueError("stage2 model already trained, set force=True to force retraining")
         except AttributeError:
             pass
+
+
 
         # lgb datasets for training.  predict endogenous x as a function of exogenous x
         df_train = self.data.loc[self.data['_purpose_']=='train1',:]
@@ -204,7 +208,7 @@ class NonparametricIV:
         self.stage1_train_frac = stage1_train_frac
         # copy just the columns we need
         df = df[keep_cols].copy()
-        df['id'] = np.arange(df.shape[0])
+        df['_id_'] = np.arange(df.shape[0])
         # generate an indicator for what each observation in the data will be used for
         # generate groups for training/validation
         # the first stage1_data_frac of the observations will be used for stage1,
@@ -223,3 +227,15 @@ class NonparametricIV:
         # save the data
         self.data = df
 
+    def _generate_quantiles_and_longify_data(self, df:pd.DataFrame):
+        '''
+        given a dataframe, use it to generate a bunch of quantiles using self.stage1_models,
+        and then stack these vertically for use in stage2
+        '''
+        dfs_to_concat = []
+        x_cols = self.exog_x_cols + self.instrument_cols
+        y_col = self.endog_x_col
+        df = df.copy()
+        for alpha, model in self.stage1_models.items():
+            tmp_df = df_base[model.feature_name()].copy()
+            tmp_df[y_col] = model.predict(tmp_df[model.feature_name])

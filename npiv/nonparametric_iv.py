@@ -53,7 +53,7 @@ class NonparametricIV:
         except AttributeError:
             pass
 
-        # lgb datasets for training.  predict endogenous x as a function of exogenous x
+        # lgb datasets for training.  predict endogenous x as a function of exogenous x and instrument
         x_cols = self.exog_x_cols + self.instrument_cols
         y_col = self.endog_x_col
         df_train = self.data.loc[self.data['_purpose_']=='train1',:]
@@ -76,6 +76,23 @@ class NonparametricIV:
             models[alpha] = gbm
         # save the trained models
         self.stage1_models = models
+
+    def predict_stage1(self, df:pd.DataFrame, prefix="qtl_"):
+        '''
+        predict quantiles of a dataframe given the models in self.stage1_models
+        df : a dataframe with the required columns for the models in 
+        returns a dataframe with the same index as df, and all the various quantile columns
+        '''
+        try:
+            self.stage1_models
+        except AttributeError:
+            raise AttributeError("stage1 models need to be trained or otherwise defined before "\
+                                +"predict_stage1 can be called")
+        qtl_df = df[[]].copy()
+        for alpha, model in self.stage1_models:
+            col_name = "{}_{:.3f}".format(prefix, alpha)
+            qtl_df[col_name] = model.predict(df[model.feature_name()])
+
 
     def train_stage2(self, force=False, print_fnc=print):
         '''
@@ -145,16 +162,15 @@ class NonparametricIV:
                 self.stage1_params = {alpha :  {
                                                 'num_threads':4,
                                                 'objective': 'quantile',
-                                                'alpha': alpha, 
+                                                'alpha': alpha,
                                                 'metric': 'quantile',
                                                 'num_iterations':1000,
-                                                'num_leaves': 5,
-                                                'learning_rate': 0.01,
+                                                'early_stopping_round':100,
+                                                'num_leaves': 15,
+                                                'learning_rate': .1,
                                                 'feature_fraction': 0.5,
                                                 'bagging_fraction': 0.8,
                                                 'bagging_freq': 5,
-                                                'max_delta_step':.1,
-                                                'min_gain_to_split':10,
                                                 }
                                         for alpha in qtls}
 
@@ -208,7 +224,6 @@ class NonparametricIV:
         self.stage1_train_frac = stage1_train_frac
         # copy just the columns we need
         df = df[keep_cols].copy()
-        df['_id_'] = np.arange(df.shape[0])
         # generate an indicator for what each observation in the data will be used for
         # generate groups for training/validation
         # the first stage1_data_frac of the observations will be used for stage1,
@@ -218,12 +233,12 @@ class NonparametricIV:
         n = df.shape[0]
         stage1_train_cutoff = int(n * stage1_data_frac * stage1_train_frac)
         stage1_val_cutoff = int(n * stage1_data_frac)
-        stage2_train_cutoff = int(n * stage1_data_frac + (1 - stage1_data_frac) * stage2_train_frac )
-        df['_purpose_'] = None
-        df.loc[df['id']<stage1_train_cutoff,                                 '_purpose_'] = 'train1'
-        df.loc[(df['id']>=stage1_train_cutoff)&(df['id']<stage1_val_cutoff), '_purpose_'] = 'val1'
-        df.loc[(df['id']>=stage1_val_cutoff)&(df['id']<stage2_train_cutoff), '_purpose_'] = 'train2'
-        df.loc[(df['id']>=stage2_train_cutoff)                             , '_purpose_'] = 'val2'
+        stage2_train_cutoff = int(n * ( stage1_data_frac + (1 - stage1_data_frac) * stage2_train_frac ))
+        # import pdb; pdb.set_trace()
+        df['_purpose_'] = np.concatenate([np.repeat('train1', stage1_train_cutoff),
+                                        np.repeat('val1', stage1_val_cutoff - stage1_train_cutoff),
+                                        np.repeat('train2', stage2_train_cutoff - stage1_val_cutoff),
+                                        np.repeat('val2', n-stage2_train_cutoff)])
         # save the data
         self.data = df
 
@@ -239,3 +254,6 @@ class NonparametricIV:
         for alpha, model in self.stage1_models.items():
             tmp_df = df_base[model.feature_name()].copy()
             tmp_df[y_col] = model.predict(tmp_df[model.feature_name])
+        #TODO: complete this
+
+

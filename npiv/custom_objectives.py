@@ -14,40 +14,6 @@ def grouped_rmse_linear(coefs, df, x_cols, y_col, grouping_col):
     return loss
 
 
-
-# def grouped_mse(preds, dataset, loss_or_gradhess='loss'):
-#     '''
-#     For each group, computes the mean predictions and the mean y over all observations in that group,
-#     and then compute the RMSE between them across all groups.
-#     designed for use as custom objective/ evaluation function for lightgbm
-#     Inputs:
-#         - preds = predicted y-values for the data, a 1-dim numpy array
-#         - dataset = some lgb.DataSet object, with a label attribute and a grouper attribute
-#                 label is automatically set when you construct a dataset, grouper you'll
-#                 have to manually attach after creating it
-#             - dataset.groupers should denote the group of each observation
-#             - dataset.label is the true y value for each observation
-#                 preds, dataset.groupers, dataset.label should all have the same length
-#     Outputs:
-#         - if 
-        
-#     '''
-#     df = pd.DataFrame({'yhat':preds, 'y':dataset.label, 'grp':dataset.grouper})
-#     grp_df = df.groupby('grp')[['yhat','y']].mean()
-#     if loss_or_gradhess == 'loss':
-#         sq_diff = np.square(grp_df['yhat']-grp_df['y'])
-#         loss = np.mean(sq_diff)
-#         return 'grouped rmse', loss, False # name, the loss istelf, boolean for is_higher_better
-#     elif loss_or_gradhess == 'gradhess':
-#         per_grp_grads = grp_df['yhat']-grp_df['y']
-#         df = df.join(pd.DataFrame({'grads':per_grp_grads}), on='grp', how='inner')
-#         grads = df['grads']
-#         hessians = np.repeat(2, preds.size)
-#         return grads, hessians
-#     else:
-#         raise ValueError
-
-
 def grouped_sse_loss(yhat, y, grps):
     '''
     grouped sum-of-squared-errors loss function.

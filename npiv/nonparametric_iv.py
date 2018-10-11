@@ -9,7 +9,7 @@ class NonparametricIV:
     '''
     def __init__(self, df:pd.DataFrame, exog_x_cols:list, instrument_cols:list, endog_x_col:str, y_col:str, 
                     id_col:str,
-                    stage1_data_frac:float=.5, stage1_train_frac:float=.7, stage2_train_frac:float=.7,
+                    stage1_data_frac:float=.5, stage1_train_frac:float=.8, stage2_train_frac:float=.8,
                     stage1_params:dict=None, stage1_models:dict=None,
                     stage2_model_type:str='lgb', stage2_params:dict=None):
         '''
@@ -65,8 +65,10 @@ class NonparametricIV:
         # ok, now start training
         models = {}
         for alpha, params in self.stage1_params.items():
-            print_fnc("alpha={}".format(alpha))
-            print_every = params['num_iterations']//10 # print stuff 20 times
+            print_every = 0
+            if print_fnc is not None:
+                print_fnc("alpha={}".format(alpha))
+                print_every = params['num_iterations']//10 # print stuff 20 times
             eval_results={} # store evaluation results as well with the trained model
             # copy the params because lgb modifies it during run...?
             gbm = lgb.train(params.copy(), train_set=dat_train, 
@@ -110,38 +112,38 @@ class NonparametricIV:
                 raise ValueError("stage2 model already trained, set force=True to force retraining")
         except AttributeError:
             pass
-        df_stage2 = self.data.loc[self.data['_purpose_'].isin('train2', 'val2'),:]
-        # predict quantiles given trained stage1 model
-        df_qtl_wide = self.predict_stage1(df_stage2, prefix='qtl')
-        # we'll be duplicating entries a bunch, so we'll need an ID to keep track of each
-        df_qtl_wide['_id_'] = np.arange(df_qtl_wide.shape[0])
-        # no make this dataframe long
-        for alpha in self.stage1_qtls:
-            qtl_
-
-
-        # lgb datasets for training.  predict endogenous x as a function of exogenous x
-        df_train = self.data.loc[self.data['_purpose_']=='train1',:]
-        df_val = self.data.loc[self.data['_purpose_']=='val1',:]
-        dat_train = lgb.Dataset(df_train[self.exog_x_cols], label=df_train[self.endog_x_col])
-        dat_val = lgb.Dataset(df_val[self.exog_x_cols], label=df_val[self.endog_x_col])
+        # generate the stage2 training data if not already done
+        try:
+            self.stage2_data
+        except AttributeError:
+            self._generate_stage2_data()
+        # lgb datasets for training
+        x_cols = self.exog_x_cols + [self.endog_x_col]
+        df_train = self.stage2_data.loc[self.stage2_data['_purpose_']=='train2',:]
+        df_val = self.stage2_data.loc[self.stage2_data['_purpose_']=='val2',:]
+        dat_train = lgb.Dataset(df_train[x_cols], label=df_train[self.y_col])
+        dat_train.grouper = df_train[self.id_col]
+        dat_val = lgb.Dataset(df_val[x_cols], label=df_val[self.y_col])
+        dat_val.grouper = df_val[self.id_col]
         # ok, now start training
-        models = {}
-        for alpha, params in self.stage1_params.items():
-            print_fnc("alpha={}".format(alpha))
-            print_every = params['num_iterations']//10 # print stuff 20 times
-            eval_results={} # store evaluation results as well with the trained model
-            # copy the params because lgb modifies it during run...?
-            gbm = lgb.train(params.copy(), train_set=dat_train, 
-                            valid_sets=[dat_train, dat_val], valid_names=['train', 'val'],
-                            verbose_eval=print_every,
-                            callbacks=[lgb.record_evaluation(eval_results)]
-                            )
-            gbm.eval_results = eval_results
-            models[alpha] = gbm
-        # save the trained models
-        self.stage1_models = models
-
+        params = self.stage2_params
+        print_every = 0 if print_fnc is None else params['num_iterations']//10
+        eval_results={} # store evaluation results as well with the trained model
+        # copy the params because lgb modifies it during run...?
+        gbm = lgb.train(params.copy(), 
+                        train_set=dat_train, valid_sets=[dat_train, dat_val], valid_names=['train', 'val'],
+                        verbose_eval=print_every,
+                        fobj = lambda preds, dataset: 
+                                 co.grouped_sse_loss_grad_hess(preds, dataset.label, dataset.grouper),
+                        feval = lambda preds, dataset: 
+                                 ('grouped sse',
+                                    co.grouped_sse_loss(preds, dataset.label, dataset.grouper),
+                                    False),
+                         callbacks=[lgb.record_evaluation(eval_results)]
+                        )
+        gbm.eval_results = eval_results
+        # save the model
+        self.stage2_model = gbm
 
 
     ### helper methods
@@ -206,13 +208,13 @@ class NonparametricIV:
                             'num_threads':4,
                             'objective': None,
                             'metric': None,
+                            'num_iterations':10000,
                             'num_leaves': 5,
                             'learning_rate': 0.2,
                             'feature_fraction': 0.5,
                             'bagging_fraction': 0.8,
                             'bagging_freq': 5,
-                            'max_delta_step':.1,
-                            'min_gain_to_split':10,
+                            'max_delta_step':.1
                             }
                 self.stage2_params = params
         elif stage2_model_type == 'linear':
@@ -262,24 +264,28 @@ class NonparametricIV:
         self.data = df
 
 
-    def _generate_stage2_data(self, force=False, print_fnc=print):
+    def _generate_stage2_data(self):
         '''
         predicts quantiles using stage1 models, stack them in order to produce a dataframe
-        that can be used to actually estimate the second stage of NPIV
+        that can be used to actually estimate the second stage of NPIV.
+        you shouldn't have to manually run this.
         '''
-        id_col = self.id_col
-        try:
-            self.stage2_data
-            if not force:
-                raise ValueError("stage2 data is already generated")
-        except AttributeError:
-            pass
-        df_stage2 = self.data.loc[self.data['_purpose_'].isin('train2', 'val2'),:]
+        df_stage2 = self.data.loc[self.data['_purpose_'].isin(['train2', 'val2']),:]
         # predict quantiles given trained stage1 model
         df_qtl_wide = self.predict_stage1(df_stage2, prefix='qtl')
-        # keep the id, as we'll need to group observations
-        df_qtl_wide[id_col] = df_stage2[id_col]
-        df_qtl_wide['_purpose_'] = df_stage2['_purpose_']
-        # no make this dataframe long
+        # import pdb; pdb.set_trace()
+        # add some additional columns we'll need
+        additional_stage2_cols = self.exog_x_cols + [self.y_col, self.id_col, '_purpose_']
+        for c in additional_stage2_cols:
+            df_qtl_wide[c] = df_stage2[c]
+        dfs_to_concat = []
         for alpha in self.stage1_qtls:
-            qtl_
+            qtl_col = "qtl_{:.3f}".format(alpha)
+            # keep the necessary columns, rename the quatile column to the endogenous x-column name
+            #  since... that's what it's proxying for
+            tmp_df = df_qtl_wide[[qtl_col] + additional_stage2_cols]\
+                            .rename(columns={qtl_col:self.endog_x_col})
+            tmp_df['_qtl_'] = alpha #also keep the name of the quantile
+            dfs_to_concat.append(tmp_df)
+        df_long = pd.concat(dfs_to_concat)
+        self.stage2_data = df_long

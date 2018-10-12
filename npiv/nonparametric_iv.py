@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 from . import custom_objectives as co
+from .model_wrapper import ModelWrapper
 
 class NonparametricIV:
     '''
@@ -11,7 +12,7 @@ class NonparametricIV:
                     id_col:str,
                     stage1_data_frac:float=.5, stage1_train_frac:float=.8, stage2_train_frac:float=.8,
                     stage1_params:dict=None, stage1_models:dict=None,
-                    stage2_model_type:str='lgb', stage2_params:dict=None):
+                    stage2_model_type:str='lgb', stage2_objective:str='true', stage2_params:dict=None):
         '''
         df : the dataframe with training data.  each row should correspond to a single observation.
         exog_x_cols, endog_x_col, y_col : exogenous features, endogenous feature (singular), and target variable,
@@ -28,12 +29,16 @@ class NonparametricIV:
                         predict(input_dataframe) function for generating predicted quantiles
         stage2_model_type : a string indicating whether to use a tree boosting model in the second stage ("lgb")
                             or a linear model ('linear')
+        stage2_objective : a string, either 'true' or 'upper', indicating whether to use the true stage2 
+                            objective or the upper bound one.  'true' requires a custom objective, which is
+                            more plausibly consistent, but at the cost of being fairly slow, whereas 'upper' 
+                            is the built-in L2 loss, which is fast but almost certainly inconsistent
         stage2_params : params for estimating the second-stage model, for passing into lgb.train()
         '''
         # init stage1 parameters/models
         self._init_stage1(stage1_params, stage1_models)
         # init stage2 parameters
-        self._init_stage2(stage2_model_type, stage2_params)
+        self._init_stage2(stage2_model_type, stage2_objective, stage2_params)
         # create the dataframe required
         self._init_data(df, exog_x_cols, instrument_cols, endog_x_col, y_col, id_col,
                         stage1_data_frac, stage1_train_frac, stage2_train_frac)
@@ -77,7 +82,7 @@ class NonparametricIV:
                             callbacks=[lgb.record_evaluation(eval_results)]
                             )
             gbm.eval_results = eval_results
-            models[alpha] = gbm
+            models[alpha] = ModelWrapper(gbm)
         # save the trained models
         self.stage1_models = models
 
@@ -117,36 +122,51 @@ class NonparametricIV:
             self.stage2_data
         except AttributeError:
             self._generate_stage2_data()
-        # lgb datasets for training
-        x_cols = self.exog_x_cols + [self.endog_x_col]
-        df_train = self.stage2_data.loc[self.stage2_data['_purpose_']=='train2',:]
-        df_val = self.stage2_data.loc[self.stage2_data['_purpose_']=='val2',:]
-        dat_train = lgb.Dataset(df_train[x_cols], label=df_train[self.y_col])
-        dat_train.grouper = df_train[self.id_col]
-        dat_val = lgb.Dataset(df_val[x_cols], label=df_val[self.y_col])
-        dat_val.grouper = df_val[self.id_col]
-        # ok, now start training
-        params = self.stage2_params
-        print_every = 0 if print_fnc is None else params['num_iterations']//10
-        eval_results={} # store evaluation results as well with the trained model
-        # copy the params because lgb modifies it during run...?
-        gbm = lgb.train(params.copy(), 
-                        train_set=dat_train, valid_sets=[dat_train, dat_val], valid_names=['train', 'val'],
-                        verbose_eval=print_every,
-                        fobj = lambda preds, dataset: 
-                                 co.grouped_sse_loss_grad_hess(preds, dataset.label, dataset.grouper),
-                        feval = lambda preds, dataset: 
-                                 ('grouped sse',
-                                    co.grouped_sse_loss(preds, dataset.label, dataset.grouper),
-                                    False),
-                         callbacks=[lgb.record_evaluation(eval_results)]
-                        )
-        gbm.eval_results = eval_results
-        # save the model
-        self.stage2_model = gbm
+
+        if self.stage2_model_type == 'lgb':
+            # lgb datasets for training
+            x_cols = self.exog_x_cols + [self.endog_x_col]
+            df_train = self.stage2_data.loc[self.stage2_data['_purpose_']=='train2',:]
+            df_val = self.stage2_data.loc[self.stage2_data['_purpose_']=='val2',:]
+            dat_train = lgb.Dataset(df_train[x_cols], label=df_train[self.y_col])
+            dat_train.grouper = df_train[self.id_col]
+            dat_val = lgb.Dataset(df_val[x_cols], label=df_val[self.y_col])
+            dat_val.grouper = df_val[self.id_col]
+            # ok, now start training
+            params = self.stage2_params
+            print_every = 0 if print_fnc is None else params['num_iterations']//10
+            eval_results={} # store evaluation results as well with the trained model
+            if self.stage2_objective == 'true':
+                # copy the params because lgb modifies it during run...?
+                gbm = lgb.train(params.copy(), 
+                                train_set=dat_train, valid_sets=[dat_train, dat_val], valid_names=['train', 'val'],
+                                verbose_eval=print_every,
+                                fobj = lambda preds, dataset: 
+                                         co.grouped_sse_loss_grad_hess(preds, dataset.label, dataset.grouper),
+                                feval = lambda preds, dataset: 
+                                         ('grouped sse',
+                                            co.grouped_sse_loss(preds, dataset.label, dataset.grouper),
+                                            False),
+                                 callbacks=[lgb.record_evaluation(eval_results)]
+                                )
+            elif self.stage2_objective == 'upper':
+                gbm = lgb.train(params.copy(), 
+                                train_set=dat_train, valid_sets=[dat_train, dat_val], valid_names=['train', 'val'],
+                                verbose_eval=print_every,
+                                 callbacks=[lgb.record_evaluation(eval_results)]
+                                )
+            else:
+                raise ValueError("self.stage2_objective not recognized")
+            gbm.eval_results = eval_results
+            # save the model
+            self.stage2_model = ModelWrapper(gbm)
+        elif self.stage2_model_type == 'linear':
+            pass # TODO: FINISH
+        else:
+            raise ValueError("self.stage2_model_type not recognized")
 
 
-    ### helper methods
+    ### helpers #######################################################################################
     def _init_stage1(self, stage1_params:dict, stage1_models:dict):
         '''
         initialization for the stage1 models/params
@@ -190,24 +210,26 @@ class NonparametricIV:
             # and store the list of quantiles that we're using in stage1
             self.stage1_qtls = self.stage1_params.keys()
 
-    def _init_stage2(self, stage2_model_type:str, stage2_params:dict):
+    def _init_stage2(self, stage2_model_type:str, stage2_objective:str, stage2_params:dict):
         '''
         parameters required for the second stage model
         '''
         acceptable_stage2_types = ['linear', 'lgb']
         if stage2_model_type not in acceptable_stage2_types:
             raise ValueError("stage2_model_type must be in {}".format(acceptable_stage2_types))
+        acceptable_stage2_objectives = ['true', 'upper']
+        if stage2_objective not in acceptable_stage2_objectives:
+            raise ValueError("stage2_objective must be in {}".format(acceptable_stage2_objectives))
+        self.stage2_model_type = stage2_model_type
+        self.stage2_objective = stage2_objective
+        # LGB models in stage2 = create relevant params
         if stage2_model_type == 'lgb':
+            # default params
             if stage2_params is not None:
                 params = stage2_params.copy()
-                params['objective'] = None
-                params['metric'] = None
-                self.stage2_params = params
             else:
                 params = {
                             'num_threads':4,
-                            'objective': None,
-                            'metric': None,
                             'num_iterations':10000,
                             'num_leaves': 5,
                             'learning_rate': 0.2,
@@ -216,9 +238,19 @@ class NonparametricIV:
                             'bagging_freq': 5,
                             'max_delta_step':.1
                             }
-                self.stage2_params = params
+            # 'true' objective = use custom objective
+            if stage2_objective == 'true':
+                params['objective'] = None
+                params['metric'] = None
+            # 'upper' objective = just l2 regression
+            elif stage2_objective == 'upper':
+                params['objective'] = 'regression_l2'
+                params['metric'] = 'l2'
+        # Linear stage2 = no need for params
         elif stage2_model_type == 'linear':
-            self.stage2_params = None # no params needed if linear objective
+            params = None
+        # save these params
+        self.stage2_params = params 
 
     def _init_data(self, df:pd.DataFrame, exog_x_cols:list, instrument_cols:list, endog_x_col:str, y_col:str, 
                     id_col:str,

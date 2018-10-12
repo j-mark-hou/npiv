@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
+from sklearn.linear_model import LinearRegression
 from . import custom_objectives as co
 from .model_wrapper import ModelWrapper
 
@@ -122,10 +123,9 @@ class NonparametricIV:
             self.stage2_data
         except AttributeError:
             self._generate_stage2_data()
-
+        x_cols = self.exog_x_cols + [self.endog_x_col]
         if self.stage2_model_type == 'lgb':
             # lgb datasets for training
-            x_cols = self.exog_x_cols + [self.endog_x_col]
             df_train = self.stage2_data.loc[self.stage2_data['_purpose_']=='train2',:]
             df_val = self.stage2_data.loc[self.stage2_data['_purpose_']=='val2',:]
             dat_train = lgb.Dataset(df_train[x_cols], label=df_train[self.y_col])
@@ -161,7 +161,17 @@ class NonparametricIV:
             # save the model
             self.stage2_model = ModelWrapper(gbm)
         elif self.stage2_model_type == 'linear':
-            pass # TODO: FINISH
+            df_train = self.stage2_data
+            if self.stage2_objective == 'true':
+                pass
+            elif self.stage2_objective == 'upper':
+                model = LinearRegression()
+                model.fit(df_train[x_cols], df_train[self.y_col])
+            else:
+                raise ValueError("self.stage2_objective not recognized")
+            # add a feature_name functionality to this object, then wrap it up and return
+            model.feature_name = lambda : x_cols
+            self.stage2_model = ModelWrapper(model)
         else:
             raise ValueError("self.stage2_model_type not recognized")
 

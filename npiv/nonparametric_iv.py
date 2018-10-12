@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 from sklearn.linear_model import LinearRegression
+from scipy.optimize import minimize
 from . import custom_objectives as co
 from .model_wrapper import ModelWrapper
 
@@ -163,7 +164,12 @@ class NonparametricIV:
         elif self.stage2_model_type == 'linear':
             df_train = self.stage2_data
             if self.stage2_objective == 'true':
-                pass
+                min_output = minimize(fun = co.grouped_sse_loss_linear, 
+                                      x0 = np.zeros(shape=len(x_cols)+1), 
+                                      args = (df_train, x_cols, self.y_col, self.id_col))
+                coefs = min_output.x[1:]
+                intercept = min_output.x[0]
+                model = LinearModel(coefs, intercept)
             elif self.stage2_objective == 'upper':
                 model = LinearRegression()
                 model.fit(df_train[x_cols], df_train[self.y_col])
@@ -331,3 +337,18 @@ class NonparametricIV:
             dfs_to_concat.append(tmp_df)
         df_long = pd.concat(dfs_to_concat)
         self.stage2_data = df_long
+
+
+class LinearModel:
+    '''
+    an object for turning the coefficients we estimate via scipy.minimize 
+    into a some object that kind of behaves like an sklearn.linear_model.LinearRegression 
+    object in that it has _coef, _intercept, and predict().
+    also, give it a feature_name() method
+    '''
+    def __init__(self, coefs:list, intercept:float):
+        self.coef_ = coefs
+        self.intercept_ = intercept
+
+    def predict(self, df):
+        return df.multiply(self.coef_).sum(axis=1)+self.intercept_

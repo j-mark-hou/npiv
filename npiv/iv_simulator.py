@@ -17,6 +17,14 @@ class IVSimulator:
         self._init_log_cost_coefs()
         self._init_log_sales_coefs()
         np.random.seed(numpy_random_seed)
+
+    def info(self, print_fnc=print):
+        print_fnc('exogenous x columns: {}'.format(self.exog_x_cols))
+        print_fnc('endogenous x column: {}'.format(self.endog_x_col))
+        print_fnc('instrument column: {}'.format(self.instrument_col))
+        print_fnc('y column: {}'.format(self.y_col))
+        print_fnc('log_sales is a linear function with these coefs: \n{}'.format(self.log_sales_coefs))
+    
     
     def _init_log_cost_coefs(self):
         '''

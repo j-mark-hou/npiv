@@ -74,8 +74,8 @@ class NonparametricIV:
         for alpha, params in self.stage1_params.items():
             print_every = 0
             if print_fnc is not None:
-                print_fnc("alpha={}".format(alpha))
-                print_every = params['num_iterations']//10 # print stuff 20 times
+                print_fnc("alpha={:.3f}".format(alpha))
+                print_every = params['num_iterations']//5
             eval_results={} # store evaluation results as well with the trained model
             # copy the params because lgb modifies it during run...?
             gbm = lgb.train(params.copy(), train_set=dat_train, 

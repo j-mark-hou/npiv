@@ -5,19 +5,23 @@ class ModelWrapper():
     '''
     provides some convenience functions for analyzing models.
     Using this class to wrap a model creates a wrapped-model
-    that basically behaves like the original model, but  
+    that basically behaves like the original model, but in
     addition also implements some other useful functions.
 
     Example usage:
-    my_original_model = some_upstream_package.train_model(some_data)
-    my_wrapped_model = ModelWrapper(my_original_model)
-    # member variables/methods of my_original_model should be accessible
-    #  directly as varaibles/methods of my_wrapped_model:
-    print(my_wrapped_model.some_attribute_of_my_original_model)
-    print(my_wrapped_model.some_method_of_my_original_model)
-    # newly implemented variables/methods in ModelWrapper should
-    #  also work 
-    print(my_wrapped_model.marginal_effects(some_other_data, some_x_col))
+        my_original_model = some_upstream_package.train_model(some_data)
+        my_wrapped_model = ModelWrapper(my_original_model)
+        # member variables/methods of my_original_model should be accessible
+        #  directly as varaibles/methods of my_wrapped_model:
+        print(my_wrapped_model.some_attribute_of_my_original_model)
+        print(my_wrapped_model.some_method_of_my_original_model)
+        # newly implemented variables/methods in ModelWrapper should
+        #  also work 
+        print(my_wrapped_model.marginal_effects(some_other_data, some_x_col))
+
+    Attributes:
+        model: the model being wrapped
+
     '''
     def __init__(self, model):
         '''
@@ -38,22 +42,24 @@ class ModelWrapper():
         in that case, this function executes, which goes to 
         the self.a object, and get the attr of that.  
         if a does not have attr either, this will throw an error.
+        this allows attributes/metods of the model to also be attributes/methods
+        of the ModelWrapper object
         '''
         return getattr(self.model, attr)
 
-    def marginal_effect_plots(self, df, x_cols=None, eps=.1, predict_kwargs=None, plot=True):
+    def marginal_effect_plots(self, df:pd.DataFrame, x_cols:list=None, eps:float=.1, 
+                                predict_kwargs:dict=None, plot:bool=True):
         '''
-        for each observation in df, approximates the slope of the model
-        with respect to x_col by perturbing x_col a bit
-        Inputs:
-            - df : a pandas.DataFrame object, has all the columns returned
-              by self.model.feature_name()
-            - x_cols : list of columns in self.model.feature_name() 
-            - eps : how much to perturb the column by
-            - predict_kwargs : optional keyword arguments to pass into the self.model.predict() function
-            - plot : set to False to just return the data rather than plotting
+        for each observation in df, compute the slope of the model wrt x_col by perturbing x_col a bit
+        Args:
+            df: a pandas.DataFrame object, has all the columns returned
+                by self.model.feature_name()
+            x_cols: list of columns, must be subset of self.model.feature_name() 
+            eps: how much to perturb the column by
+            predict_kwargs: optional keyword arguments to pass into the self.model.predict() function
+            plot: set to False to just return the data rather than plotting
         Returns:
-            - either a dataframe containing all of the computed marginal effects, or nothing
+            either a pd.DataFrame containing all of the computed marginal effects, or nothing
         '''
         predict_kwargs = {} if not predict_kwargs else predict_kwargs
         feat_names = self.model.feature_name()
@@ -82,27 +88,28 @@ class ModelWrapper():
         else:
             return plot_df
 
-    def partial_dependency_plots(self, df, x_cols=None, num_grid_points=100, sample_n=1000, plot=True):
+    def partial_dependency_plots(self, df:pd.DataFrame, x_cols:list=None, num_grid_points:int=100, 
+                                    sample_n:int=1000, plot:bool=True):
         '''
-        plots the 25% percentiles, mean, and 75% percentile 
-        of the output of self.model as each of the columns in x_cols 
-        independently varies.  df is used as an empirical distribution 
-        over which to average the data.
-        Inputs:
-            - df : some dataframe with columns containing all of self.model.feature_name()
-            - x_cols : some subset of dataframe.columns to produce partial dependency plots for.
-              leave as None to do so for all features of self.model.
-            - num_grid_points : for each x-column, how many points to compute the model at.
-              too large => slow, too small => resulting partial dependency plot too coarse.
-            - sample_n : how many observations to randomly sample from df when computing
-              statistics.  too large => slow, too small => stats inaccurate.
-            - plot : set to True to plot, False to return the dataframe used to generate the plot.
+        plots mean and quartiles of avg effect on y of various x-columns
+        Args:
+            df: some dataframe with columns containing all of self.model.feature_name().
+                    this is used as an empirical distribution over which to average
+            x_cols: some subset of self.model.feature_name() to produce partial dependency plots for.
+                    leave as None to do so for all features of self.model.
+            num_grid_points: for each x-column, how many points to compute the model at.
+                            too large => slow, too small => partial dependency plot too coarse.
+            sample_n: how many observations to randomly sample from df when computing
+                        statistics.  too large => slow, too small => stats inaccurate.
+            plot: set to True to plot, False to return the dataframe used to generate the plot.
         Returns:
             - either a dataframe containing all the relevant plotted information, or nothing
         '''
         x_cols = x_cols if x_cols else self.model.feature_name()
-        assert(not set(x_cols).difference(self.model.feature_name())), "x_cols contains columns not recognized by the model"
-        assert(not set(self.model.feature_name()).difference(df.columns)), "model requires columns not found in df"
+        assert(not set(x_cols).difference(self.model.feature_name())), \
+                "x_cols contains columns not recognized by the model"
+        assert(not set(self.model.feature_name()).difference(df.columns)), \
+                "model requires columns not found in df"
         if df.shape[0]>sample_n:
             df = df.sample(sample_n)
         num_obs = df.shape[0]
@@ -114,7 +121,7 @@ class ModelWrapper():
             xpoints = np.linspace(xmin, xmax, num_grid_points)
             # for each of the x-points, set the corresponding value of df[c] to that, and stack the dataframes together
             tmp_df = pd.concat([df]*num_grid_points)
-            tmp_df[c] = np.repeat(xpoints, num_obs) # the first num_obs values will all be xpoints[0], next num_obs xpoints[1], etc.
+            tmp_df[c] = np.repeat(xpoints, num_obs) # the first num_obs values will all be xpoints[0], etc.
             # remember which x_col we're moving here, and add this to the list to be concatenated
             tmp_df['x_col'] = c
             tmp_df['x_point'] = tmp_df[c]

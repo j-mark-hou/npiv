@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-class ModelWrapper():
+class ModelWrapper:
     """
     provides some convenience functions for analyzing models.
     Using this class to wrap a model creates a wrapped-model
@@ -141,7 +141,7 @@ class ModelWrapper():
             fig, axes = plt.subplots(nrows=len(x_cols), ncols=1, figsize=(8, len(x_cols)*1.5))
             for (i,c) in enumerate(x_cols):
                 ax = axes[i]
-                tmp_df = df_summarized.loc[(c),:].reset_index().rename(columns={'x_point':c})
+                tmp_df = df_summarized.loc[c,:].reset_index().rename(columns={'x_point':c})
                 # plot the mean
                 ax.plot(tmp_df[c], tmp_df['mean'], color='black', linestyle='-')
                 ax.plot(tmp_df[c], tmp_df['25%'], color='black', linestyle='--')

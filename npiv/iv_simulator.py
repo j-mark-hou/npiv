@@ -100,7 +100,7 @@ class IVSimulator:
                 raise ValueError("df should not contain nulls")
         df['log_sales'] = generate_log_sales(df[exog_x_cols], self.log_sales_coefs.loc[exog_x_cols],
                                               df['log_price'], df['unobserved_elast'])
-        return(df)
+        return df
 
     def compute_log_price_quantile_given_cost_and_instrument(self, log_costs:np.ndarray, instrument:np.ndarray, 
                                                                 quantile:float) -> np.ndarray:
@@ -127,7 +127,7 @@ class IVSimulator:
         #  of the uniform distribution on [elast_min, elast_max]
         elast_qtl = quantile * (self.elast_max - self.elast_min) + self.elast_min 
         log_price_qtl = generate_log_optimal_prices(log_costs, elast_qtl) + instrument
-        return(log_price_qtl)
+        return log_price_qtl
         
 ### helper functions for generating data ########################3
 def generate_elasticities(num_obs:int, elast_max:float, elast_min:float) -> np.ndarray:
@@ -143,7 +143,7 @@ def generate_elasticities(num_obs:int, elast_max:float, elast_min:float) -> np.n
     """
     if elast_max <= elast_min:
         raise ValueError("why is elast_max not greater than elast_min?")
-    return(np.random.uniform(elast_min, elast_max, size=num_obs))
+    return np.random.uniform(elast_min, elast_max, size=num_obs)
 
 def generate_log_costs(df_exog_x_cols:pd.DataFrame, exog_x_coefs:np.ndarray) -> np.ndarray:
     """
@@ -157,7 +157,7 @@ def generate_log_costs(df_exog_x_cols:pd.DataFrame, exog_x_coefs:np.ndarray) -> 
         pd.Series object with same index as df_exog_x_cols
     """
     log_costs = df_exog_x_cols.multiply(exog_x_coefs, axis=1).sum(axis=1)
-    return(log_costs)
+    return log_costs
 
 def generate_random_log_prices(num_obs:int) -> np.ndarray:
     """
@@ -168,7 +168,7 @@ def generate_random_log_prices(num_obs:int) -> np.ndarray:
         an np.ndarray object with num_obs entries
     """
     random_log_prices = np.random.normal(size=num_obs)
-    return(random_log_prices)
+    return random_log_prices
 
 def generate_log_optimal_prices(log_costs:np.ndarray, elasts:np.ndarray) -> np.ndarray:
     """
@@ -181,7 +181,7 @@ def generate_log_optimal_prices(log_costs:np.ndarray, elasts:np.ndarray) -> np.n
         n-length array with the optimal prices for each product
     """
     log_optimal_prices = log_costs - np.log(1+1/elasts)
-    return(log_optimal_prices)
+    return log_optimal_prices
 
 def generate_instrument(num_obs:int) -> np.ndarray:
     """
@@ -192,7 +192,7 @@ def generate_instrument(num_obs:int) -> np.ndarray:
         the instrument array
     """
     instrument = np.random.uniform(-.1, .1, size=num_obs)
-    return(instrument)
+    return instrument
 
 def generate_log_sales(df_exog_x_cols:pd.DataFrame, exog_x_coefs:np.ndarray, log_prices:np.ndarray, 
                         elasts:np.ndarray) -> np.ndarray:
@@ -213,4 +213,4 @@ def generate_log_sales(df_exog_x_cols:pd.DataFrame, exog_x_coefs:np.ndarray, log
     log_sales = df_exog_x_cols.multiply(exog_x_coefs, axis=1).sum(axis=1) \
                 + log_prices * elasts \
                 + np.random.normal(size=df_exog_x_cols.shape[0])
-    return(log_sales)
+    return log_sales

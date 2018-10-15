@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 class ModelWrapper():
-    '''
+    """
     provides some convenience functions for analyzing models.
     Using this class to wrap a model creates a wrapped-model
     that basically behaves like the original model, but in
@@ -22,9 +22,9 @@ class ModelWrapper():
     Attributes:
         model: the model being wrapped
 
-    '''
+    """
     def __init__(self, model):
-        '''
+        """
         model must some object with:
           - feature_name() method that returns a list of the
             features used by the model
@@ -33,23 +33,23 @@ class ModelWrapper():
             columns are model.feature_name() in exactly that 
             order, and returns some numpy.array object of length 
             equal to the number of rows in df
-        '''
+        """
         self.model = model
 
     def __getattr__(self, attr):
-        '''
+        """
         this only gets called if this ModelWrapper does not have attr
         in that case, this function executes, which goes to 
         the self.a object, and get the attr of that.  
         if a does not have attr either, this will throw an error.
         this allows attributes/metods of the model to also be attributes/methods
         of the ModelWrapper object
-        '''
+        """
         return getattr(self.model, attr)
 
     def marginal_effect_plots(self, df:pd.DataFrame, x_cols:list=None, eps:float=.1, 
                                 predict_kwargs:dict=None, plot:bool=True):
-        '''
+        """
         for each observation in df, compute the slope of the model wrt x_col by perturbing x_col a bit
         Args:
             df: a pandas.DataFrame object, has all the columns returned
@@ -60,7 +60,7 @@ class ModelWrapper():
             plot: set to False to just return the data rather than plotting
         Returns:
             either a pd.DataFrame containing all of the computed marginal effects, or nothing
-        '''
+        """
         predict_kwargs = {} if not predict_kwargs else predict_kwargs
         feat_names = self.model.feature_name()
         x_cols = x_cols if x_cols else feat_names
@@ -92,7 +92,7 @@ class ModelWrapper():
 
     def partial_dependency_plots(self, df:pd.DataFrame, x_cols:list=None, num_grid_points:int=100, 
                                     sample_n:int=1000, plot:bool=True):
-        '''
+        """
         plots mean and quartiles of avg effect on y of various x-columns
         Args:
             df: some dataframe with columns containing all of self.model.feature_name().
@@ -106,7 +106,7 @@ class ModelWrapper():
             plot: set to True to plot, False to return the dataframe used to generate the plot.
         Returns:
             - either a dataframe containing all the relevant plotted information, or nothing
-        '''
+        """
 
 
         x_cols = x_cols if x_cols else self.model.feature_name()

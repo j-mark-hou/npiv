@@ -7,36 +7,54 @@ from . import custom_objectives as co
 from .model_wrapper import ModelWrapper
 
 class NonparametricIV:
-    '''
+    """
     class encapsulating the entire nonparametric instrumental variables process
-    '''
+    Attributes:
+        data: the pd.DataFrame object containing all of the relevant data
+        stage1_qtl: the quantiles that the various stage1 models predict for
+        stage1_models: dict of the form {quantile:model} that has for each quantile, the corresponding
+                        model for predicting that quantile
+        stage1_params: dict of the form {quantile:parameters} that document the parameters fed into LGB to 
+                        produce these various stage1_models.  note that this won't directly correspond
+                        to the corresponding arg in __init__, as there are some modifications done to fix the
+                        objective and metric.
+                        this object may not exist of NonparametricIV was initialized with stage1_models arg
+                        not None.
+        stage2_data: the data generated for training stage2 models.  generated from a subset of self.data
+        stage2_params: parameters used to train the stage2 models.  note that this won't directly correspond
+                        to the corresponding arg in __init__, as there are some modifications done to fix the
+                        objective and metric
+        stage2_model: the final trained stage2 NPIV model
+        all other parameters: see the corresponding arguments in __init__
+    """
     def __init__(self, df:pd.DataFrame, exog_x_cols:list, instrument_cols:list, endog_x_col:str, y_col:str, 
                     id_col:str,
                     stage1_data_frac:float=.5, stage1_train_frac:float=.8, stage2_train_frac:float=.8,
                     stage1_params:dict=None, stage1_models:dict=None,
                     stage2_model_type:str='lgb', stage2_objective:str='true', stage2_params:dict=None):
-        '''
-        df : the dataframe with training data.  each row should correspond to a single observation.
-        exog_x_cols, endog_x_col, y_col : exogenous features, endogenous feature (singular), and target variable,
-                                          must be columns in df
-        id_col : column with a unique identifier for each row.
-        stage1_data_frac: how much of the data to use to train stage1 vs stage2 (they're trained on separate sets)
-        stage1_train_frac: how much of the stage1-data to use for training vs early stopping
-        stage1_params : a dict of form {quantile : dictionary_of_parameters_for_corresponding_quantile_model}
-                        where the key is a float in (0,1) and the value is a dict of parameters for passing into 
-                        lightgbm.train().  
-                        'objective', 'alpha', 'metric' can be omitted, as they will be overwritten
-        stage1_models : a dict of form {quantile : model_for_this_quantile} where the model_for_this_quantile must
-                        implement a feature_name() function for getting the feature names for the model, and a
-                        predict(input_dataframe) function for generating predicted quantiles
-        stage2_model_type : a string indicating whether to use a tree boosting model in the second stage ("lgb")
-                            or a linear model ('linear')
-        stage2_objective : a string, either 'true' or 'upper', indicating whether to use the true stage2 
-                            objective or the upper bound one.  'true' requires a custom objective, which is
-                            more plausibly consistent, but at the cost of being fairly slow, whereas 'upper' 
-                            is the built-in L2 loss, which is fast but almost certainly inconsistent
-        stage2_params : params for estimating the second-stage model, for passing into lgb.train()
-        '''
+        """
+        Args:
+            df: the dataframe with training data.  each row should correspond to a single observation.
+            exog_x_cols, endog_x_col, y_col: exogenous features, endogenous feature (singular), and target variable,
+                                              must be columns in df
+            id_col: column with a unique identifier for each row.
+            stage1_data_frac: how much of the data to use to train stage1 vs stage2 (they're trained on separate sets)
+            stage1_train_frac: how much of the stage1-data to use for training vs early stopping
+            stage1_params: a dict of form {quantile : dictionary_of_parameters_for_corresponding_quantile_model}
+                            where the key is a float in (0,1) and the value is a dict of parameters for passing into 
+                            lightgbm.train().  
+                            'objective', 'alpha', 'metric' can be omitted, as they will be overwritten
+            stage1_models: a dict of form {quantile : model_for_this_quantile} where the model_for_this_quantile must
+                            implement a feature_name() function for getting the feature names for the model, and a
+                            predict(input_dataframe) function for generating predicted quantiles
+            stage2_model_type: a string indicating whether to use a tree boosting model in the second stage ("lgb")
+                                or a linear model ('linear')
+            stage2_objective: a string, either 'true' or 'upper', indicating whether to use the true stage2 
+                                objective or the upper bound one.  'true' requires a custom objective, which is
+                                more plausibly consistent, but at the cost of being fairly slow, whereas 'upper' 
+                                is the built-in L2 loss, which is fast but almost certainly inconsistent
+            stage2_params: params for estimating the second-stage model, for passing into lgb.train()
+        """
         # init stage1 parameters/models
         self._init_stage1(stage1_params, stage1_models)
         # init stage2 parameters
@@ -47,11 +65,12 @@ class NonparametricIV:
 
 
     def train_stage1(self, force=False, print_fnc=print):
-        '''
-        trains stage1 models, which predict quantiles, given the input parameters stored in self.stage1_params
-        force : force training even if we've already trained
-        print_fnc : some function for printing/logging.
-        '''
+        """
+        trains stage1 models to predict quantiles, stores it in self.stage1_models
+        Args:
+            force: force training even if we've already trained
+            print_fnc: some function for printing/logging
+        """
         if not self._train_stage1_enabled:
             raise ValueError("training stage1 is not enabled, as stage1 models "\
                             +"were directly input during initialization")
@@ -76,7 +95,7 @@ class NonparametricIV:
             if print_fnc is not None:
                 print_fnc("alpha={:.3f}".format(alpha))
                 print_every = params['num_iterations']//5
-            eval_results={} # store evaluation results as well with the trained model
+            eval_results = {} # store evaluation results as well with the trained model
             # copy the params because lgb modifies it during run...?
             gbm = lgb.train(params.copy(), train_set=dat_train, 
                             valid_sets=[dat_train, dat_val], valid_names=['train', 'val'],
@@ -88,12 +107,14 @@ class NonparametricIV:
         # save the trained models
         self.stage1_models = models
 
-    def predict_stage1(self, df:pd.DataFrame, prefix="qtl"):
-        '''
+    def predict_stage1(self, df:pd.DataFrame, prefix="qtl") -> pd.DataFrame:
+        """
         predict quantiles of a dataframe given the models in self.stage1_models
-        df : a dataframe with the required columns for the models in 
-        returns a dataframe with the same index as df, and all the various quantile columns
-        '''
+        Args:
+            df : a dataframe with the required columns for the models in 
+        Returns:
+            a dataframe with the same index as df, and all the various quantile columns
+        """
         try:
             self.stage1_models
         except AttributeError:
@@ -107,12 +128,13 @@ class NonparametricIV:
 
 
     def train_stage2(self, force=False, print_fnc=print):
-        '''
-        trains stage2 models, which takes quantiles and tries to predict
-        self.y_col as a function of self.exog_x_col and a synthetic version of
-        self.endog_x_col generated via self.stage1_models
+        """
+        trains stage2 models, store it in self.stage2_model
+        Args:
+            force: force training even if we've already trained
+            print_fnc: some function for printing/logging
 
-        '''
+        """
         try:
             self.stage2_model
             if not force:
@@ -184,9 +206,9 @@ class NonparametricIV:
 
     ### helpers #######################################################################################
     def _init_stage1(self, stage1_params:dict, stage1_models:dict):
-        '''
+        """
         initialization for the stage1 models/params
-        '''
+        """
         self._train_stage1_enabled = True
         if stage1_models is not None:
             # if stage1_models is defined, we'll just use that
@@ -227,9 +249,9 @@ class NonparametricIV:
             self.stage1_qtls = self.stage1_params.keys()
 
     def _init_stage2(self, stage2_model_type:str, stage2_objective:str, stage2_params:dict):
-        '''
-        parameters required for the second stage model
-        '''
+        """
+        initialization for the stage2 params
+        """
         acceptable_stage2_types = ['linear', 'lgb']
         if stage2_model_type not in acceptable_stage2_types:
             raise ValueError("stage2_model_type must be in {}".format(acceptable_stage2_types))
@@ -271,9 +293,9 @@ class NonparametricIV:
     def _init_data(self, df:pd.DataFrame, exog_x_cols:list, instrument_cols:list, endog_x_col:str, y_col:str, 
                     id_col:str,
                     stage1_data_frac:float, stage1_train_frac:float, stage2_train_frac:float):
-        '''
+        """
         initialization required to create the training data
-        '''
+        """
         # make sure the dataframe is actually unique on id_col
         if len(df[id_col].unique()) != df.shape[0]:
             raise ValueError("df must be unique on id_col")
@@ -313,11 +335,10 @@ class NonparametricIV:
 
 
     def _generate_stage2_data(self):
-        '''
-        predicts quantiles using stage1 models, stack them in order to produce a dataframe
-        that can be used to actually estimate the second stage of NPIV.
-        you shouldn't have to manually run this.
-        '''
+        """
+        generate data needed for stage2. predicts quantiles using stage1 models, stack them in 
+        order to produce a dataframe that can be used to actually estimate the second stage of NPIV.
+        """
         df_stage2 = self.data.loc[self.data['_purpose_'].isin(['train2', 'val2']),:]
         # predict quantiles given trained stage1 model
         df_qtl_wide = self.predict_stage1(df_stage2, prefix='qtl')
@@ -340,13 +361,18 @@ class NonparametricIV:
 
 
 class LinearModel:
-    '''
+    """
     an object for turning the coefficients we estimate via scipy.minimize 
     into a some object that kind of behaves like an sklearn.linear_model.LinearRegression 
     object in that it has _coef, _intercept, and predict().
     also, give it a feature_name() method
-    '''
+    """
     def __init__(self, coefs:list, intercept:float):
+        """
+        Args:
+            coefs: the literal list of coefficients
+            intercept: the intercept of the linear model
+        """
         self.coef_ = coefs
         self.intercept_ = intercept
 

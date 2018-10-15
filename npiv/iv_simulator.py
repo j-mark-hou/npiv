@@ -96,7 +96,8 @@ class IVSimulator:
             df['log_price'] = df['unobserved_log_optimal_price'] + df['instrument']
         # make sure no nulls or infinities in the log price
         with pd.option_context('mode.use_inf_as_null', True):
-            assert(df['unobserved_log_optimal_price'].notnull().all())
+            if not df['unobserved_log_optimal_price'].notnull().all():
+                raise ValueError("df should not contain nulls")
         df['log_sales'] = generate_log_sales(df[exog_x_cols], self.log_sales_coefs.loc[exog_x_cols],
                                               df['log_price'], df['unobserved_elast'])
         return(df)
@@ -140,7 +141,8 @@ def generate_elasticities(num_obs:int, elast_max:float, elast_min:float) -> np.n
     Returns:
         an np.ndarray with num_obs entries
     """
-    assert(elast_max>elast_min), "why is elast_max not greater than elast_min?"
+    if elast_max <= elast_min:
+        raise ValueError("why is elast_max not greater than elast_min?")
     return(np.random.uniform(elast_min, elast_max, size=num_obs))
 
 def generate_log_costs(df_exog_x_cols:pd.DataFrame, exog_x_coefs:np.ndarray) -> np.ndarray:

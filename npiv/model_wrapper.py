@@ -64,8 +64,10 @@ class ModelWrapper():
         predict_kwargs = {} if not predict_kwargs else predict_kwargs
         feat_names = self.model.feature_name()
         x_cols = x_cols if x_cols else feat_names
-        assert(not set(x_cols).difference(feat_names)), "x_cols contains columns not recognized by the model"
-        assert(not set(feat_names).difference(df.columns)), "model requires columns not found in df"
+        if set(x_cols).difference(feat_names):
+            raise ValueError("x_cols contains columns not recognized by the model")
+        if set(feat_names).difference(df.columns):
+            raise ValueError("model requires columns not found in df")
         dfs_to_concat = []
         for x_col in x_cols:
         # predict outcome when we increase the column a bit
@@ -105,12 +107,14 @@ class ModelWrapper():
         Returns:
             - either a dataframe containing all the relevant plotted information, or nothing
         '''
+
+
         x_cols = x_cols if x_cols else self.model.feature_name()
-        assert(not set(x_cols).difference(self.model.feature_name())), \
-                "x_cols contains columns not recognized by the model"
-        assert(not set(self.model.feature_name()).difference(df.columns)), \
-                "model requires columns not found in df"
-        if df.shape[0]>sample_n:
+        if set(x_cols).difference(self.model.feature_name()):
+            raise ValueError("x_cols contains columns not recognized by the model")
+        if set(self.model.feature_name()).difference(df.columns):
+            raise ValueError("model requires columns not found in df")
+        if df.shape[0] > sample_n:
             df = df.sample(sample_n)
         num_obs = df.shape[0]
         # for each x_column, 

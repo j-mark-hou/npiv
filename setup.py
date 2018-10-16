@@ -7,6 +7,7 @@ setup(
     maintainer_email='jmarkhou@jmarkhou.com',
     packages=find_packages(),
     install_requires=[
+    'numpy',
     'pandas',
     'scipy',
     'statsmodels',

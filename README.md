@@ -1,6 +1,7 @@
 Implementation of the core idea behind the DeepIV paper, but with tree boosting and quantile regression instead of deep learning and mixtures of gaussians.
 
 Just browsing:
+
 - for more in depth discussion, see this blog post [http://jmarkhou.com/npiv/](http://jmarkhou.com/npiv/)
 - look at [```example/example.ipynb```](https://github.com/j-mark-hou/npiv/blob/master/example/example.ipynb)
 
